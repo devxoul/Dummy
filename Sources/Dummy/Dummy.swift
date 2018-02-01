@@ -1,13 +1,10 @@
 import Foundation
 
 public func dummy<T>() -> T {
-  // reference type
-  if T.self is AnyObject.Type {
-    return unsafeBitCast(Dummy<T>(), to: T.self)
-  }
-
-  // value type
   let zeroFilledDummy: T = zeroFilledValue()
+  if T.self is AnyObject.Type {
+    return zeroFilledDummy
+  }
   let data = dummyData(from: zeroFilledDummy)
   return data.withUnsafeBytes { pointer in
     return UnsafeRawPointer(pointer).load(as: T.self)
@@ -24,30 +21,53 @@ private final class SharedObject {
   static let instance = SharedObject()
 }
 
+private func data<T>(_ value: T, isOptional: Bool = false) -> Data {
+  if isOptional {
+    return data(value as T?, isOptional: false)
+  }
+  if let cls = T.self as? AnyClass {
+    let address = unsafeBitCast(value, to: UInt.self)
+    let pointer = UnsafeRawPointer(bitPattern: address)!
+    return Data(bytes: pointer, count: class_getInstanceSize(cls))
+  } else {
+    let size = MemoryLayout<T>.stride
+    var dummyValue = value
+    return withUnsafePointer(to: &dummyValue) { pointer in
+      Data(bytes: UnsafeRawPointer(pointer), count: size)
+    }
+  }
+}
+
 private func zeroFilledValue<T>() -> T {
+  if let cls = T.self as? AnyObject.Type {
+    let size = class_getInstanceSize(cls)
+
+    var buffer = Data()
+    buffer.append(data(T.self)) // isa
+    buffer.append(data(0x2))    // refCount - I don't know why it starts from 2
+
+    let alignment = MemoryLayout<Int>.alignment
+    for _ in (buffer.count / alignment)..<(size / alignment) {
+      buffer.append(data(0))
+    }
+
+    var bytes = (buffer as NSData).bytes
+    return withUnsafeMutablePointer(to: &bytes) {
+      UnsafeMutableRawPointer($0).load(as: T.self)
+    }
+  }
+
   let stride = MemoryLayout<T>.stride
   let alignment = MemoryLayout<T>.alignment
   let pointer = UnsafeMutableRawPointer.allocate(bytes: stride, alignedTo: alignment)
   for i in 0..<(stride / alignment) {
     pointer.storeBytes(of: SharedObject.instance, toByteOffset: i * alignment, as: AnyObject.self)
   }
-  return pointer.bindMemory(to: T.self, capacity: stride).pointee
+  return pointer.load(as: T.self)
 }
 
-private func dummyData(from value: Any) -> Data {
-  var data = Data()
-
-  func append<T>(_ value: T, isOptional: Bool) {
-    if isOptional {
-      return append(value as T?, isOptional: false)
-    }
-    let size = MemoryLayout<T>.stride
-    var dummyValue = value
-    let dummyData = withUnsafePointer(to: &dummyValue) { pointer in
-      Data(bytes: UnsafeRawPointer(pointer), count: size)
-    }
-    data.append(dummyData)
-  }
+func dummyData(from value: Any) -> Data {
+  var buffer = Data()
 
   let mirror = Mirror(reflecting: value)
   for (_, value) in mirror.children.lazy {
@@ -64,34 +84,40 @@ private func dummyData(from value: Any) -> Data {
     }
 
     switch typeName {
-    case "Int": append(0 as Int, isOptional: isOptional)
-    case "Int8": append(0 as Int8, isOptional: isOptional)
-    case "Int16": append(0 as Int16, isOptional: isOptional)
-    case "Int32": append(0 as Int32, isOptional: isOptional)
-    case "Int64": append(0 as Int64, isOptional: isOptional)
+    case "Int": buffer.append(data(0 as Int, isOptional: isOptional))
+    case "Int8": buffer.append(data(0 as Int8, isOptional: isOptional))
+    case "Int16": buffer.append(data(0 as Int16, isOptional: isOptional))
+    case "Int32": buffer.append(data(0 as Int32, isOptional: isOptional))
+    case "Int64": buffer.append(data(0 as Int64, isOptional: isOptional))
 
-    case "UInt": append(0 as UInt, isOptional: isOptional)
-    case "UInt8": append(0 as UInt8, isOptional: isOptional)
-    case "UInt16": append(0 as UInt16, isOptional: isOptional)
-    case "UInt32": append(0 as UInt32, isOptional: isOptional)
-    case "UInt64": append(0 as UInt64, isOptional: isOptional)
+    case "UInt": buffer.append(data(0 as UInt, isOptional: isOptional))
+    case "UInt8": buffer.append(data(0 as UInt8, isOptional: isOptional))
+    case "UInt16": buffer.append(data(0 as UInt16, isOptional: isOptional))
+    case "UInt32": buffer.append(data(0 as UInt32, isOptional: isOptional))
+    case "UInt64": buffer.append(data(0 as UInt64, isOptional: isOptional))
 
-    case "Float": break // I don't know why
-    case "Double": append(0 as Double, isOptional: isOptional)
-    case "String": append("", isOptional: isOptional)
+    case "Float":
+      if isOptional {
+        buffer.append(data(0 as Float?, isOptional: isOptional))
+      } else {
+        break // I don't know why
+      }
+    case "Double": buffer.append(data(0 as Double, isOptional: isOptional))
+    case "String": buffer.append(data("", isOptional: isOptional))
 
     case _ where typeName.hasPrefix("Array<"):
-      append([Any](), isOptional: isOptional)
+      buffer.append(data([Any](), isOptional: isOptional))
 
     case _ where typeName.hasPrefix("Dictionary<"):
-      append([AnyHashable: Any](), isOptional: isOptional)
+      buffer.append(data([AnyHashable: Any](), isOptional: isOptional))
 
     case _ where valueType is AnyObject.Type:
-      append(SharedObject.instance as AnyObject, isOptional: isOptional)
+//      buffer.append(data(dummy() as AnyObject, isOptional: isOptional))
+      buffer.append(data(SharedObject.instance as AnyObject, isOptional: isOptional))
 
     default:
-      data.append(contentsOf: dummyData(from: value))
+      buffer.append(contentsOf: dummyData(from: value))
     }
   }
-  return data
+  return buffer
 }

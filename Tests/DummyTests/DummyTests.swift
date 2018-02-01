@@ -3,6 +3,7 @@ import XCTest
 
 protocol Protocol {
   var typeName: String { get }
+  var simpleStruct: SimpleStruct? { get }
 }
 
 extension Protocol {
@@ -11,11 +12,30 @@ extension Protocol {
   }
 }
 
-class SwiftClass: Protocol {}
-class ObjcClass: NSObject, Protocol {}
-class GenericClass<T: Protocol>: Protocol {}
-final class FinalSwiftClass: Protocol {}
-final class FinalObjcClass: NSObject, Protocol {}
+class SwiftClass: Protocol {
+  var simpleStruct: SimpleStruct?
+}
+
+class ObjcClass: NSObject, Protocol{
+  var simpleStruct: SimpleStruct?
+}
+
+class GenericClass<T: Protocol>: Protocol{
+  var simpleStruct: SimpleStruct?
+}
+
+final class FinalSwiftClass: Protocol{
+  var simpleStruct: SimpleStruct?
+}
+
+final class FinalObjcClass: NSObject, Protocol{
+  var simpleStruct: SimpleStruct?
+}
+
+struct SimpleStruct {
+  let int: Int
+  let string: String
+}
 
 struct Struct: Protocol {
   let int: Int
@@ -23,8 +43,8 @@ struct Struct: Protocol {
   let intImplicitlyUnwrappedOptional: Int!
 
   let float: Float
-//  let floatOptional: Float?
-//  let floatImplicitlyUnwrappedOptional: Float!
+  let floatOptional: Float?
+  let floatImplicitlyUnwrappedOptional: Float!
 
   let double: Double
   let doubleOptional: Double?
@@ -57,9 +77,10 @@ struct Struct: Protocol {
 
   let `struct`: AnotherStruct
   let structOotional: AnotherStruct?
+  let simpleStruct: SimpleStruct?
 }
 
-struct AnotherStruct: Protocol {
+struct AnotherStruct {
   let swiftClass: SwiftClass
   let swiftClassOptional: SwiftClass?
 
@@ -78,6 +99,7 @@ final class DummyTests: XCTestCase {
     let value: SwiftClass = dummy()
     XCTAssertNotNil("\(value)")
     XCTAssertTrue(value.typeName.contains("SwiftClass"))
+    XCTAssertNotNil(value.simpleStruct)
   }
 
   func testObjcClass() {
