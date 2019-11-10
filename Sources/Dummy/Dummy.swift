@@ -2,14 +2,23 @@ import Foundation
 
 public func dummy<T>() -> T {
   let zeroFilledDummy: T = zeroFilledValue()
+
+  print("Zero :", _data(zeroFilledDummy) as NSData)
+
+  let prefix: Data?
   if T.self is AnyObject.Type {
-    return zeroFilledDummy
+    prefix = Data(_data(zeroFilledDummy, isOptional: false).prefix(16))
+  } else {
+    prefix = nil
   }
-  let data = dummyData(from: zeroFilledDummy)
+
+  let data = dummyData(from: zeroFilledDummy, prefix: prefix)
+  print("Dummy:", data as NSData)
   return data.withUnsafeBytes { pointer in
     return UnsafeRawPointer(pointer).load(as: T.self)
   }
 }
+
 
 public func dummy<T>(_ type: T.Type) -> T {
   return dummy()
@@ -36,6 +45,9 @@ private func data<T>(_ value: T, isOptional: Bool = false) -> Data {
       Data(bytes: UnsafeRawPointer(pointer), count: size)
     }
   }
+}
+private func _data<T>(_ value: T, isOptional: Bool = false) -> Data {
+  return data(value, isOptional: isOptional)
 }
 
 private func zeroFilledValue<T>() -> T {
@@ -66,14 +78,19 @@ private func zeroFilledValue<T>() -> T {
   return pointer.load(as: T.self)
 }
 
-func dummyData(from value: Any) -> Data {
+func dummyData(from value: Any, prefix: Data? = nil) -> Data {
   var buffer = Data()
+  if let prefix = prefix {
+    buffer.append(prefix)
+  }
+  print("BUF  :", buffer as NSData)
 
   let mirror = Mirror(reflecting: value)
-  for (_, value) in mirror.children.lazy {
+  for (label, value) in mirror.children.lazy {
     let valueType = type(of: value)
     var typeName = String(describing: valueType)
     var isOptional = false
+    print("let", (label ?? "") + ":", typeName)
 
     while typeName.hasPrefix("Optional<") || typeName.hasPrefix("ImplicitlyUnwrappedOptional<") {
       let prefix = typeName.hasPrefix("Optional<") ? "Optional<" : "ImplicitlyUnwrappedOptional<"
